@@ -1,12 +1,7 @@
 const express = require('express');
 
-// // encrypt
-const CryptoJS = require("crypto-js");
-
 const app = express();
 const port = 8080
-
-
 
 // // db connect 
 const DataBaseConnect = require('./DBconnect')
@@ -15,12 +10,22 @@ DataBaseConnect();
 // // Schemas (model)
 const Login = require('./Schemas/Login')
 
+// // encrypt
+const CryptoJS = require("crypto-js");
+
+/// // //Json web token
+const jwt = require('jsonwebtoken');
+const SecreteToken = 'SecreteTokenVinayakTavatam';
+
+
+
 // /// imp pass a data in bodyparser in supported
 const bodyParser = require('body-parser')
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 
 // 1st router signup
+
 app.post('/signup', async (req, res) => {
     const User = new Login();  // Schema line : 12
     // // request body signup
@@ -41,9 +46,13 @@ app.post('/signup', async (req, res) => {
     console.log(`Find Email ${FindEmail}`)
 
     if (!FindEmail) {
-        const data = await User.save(); // save data in database
-        console.log(data)
-        res.json(data)
+        const SaveData = await User.save(); // save data in database
+        res.json(SaveData)
+
+        /// // /JWT
+        const AuthenticationToken = jwt.sign({ Email: SaveData.Email, id: SaveData._id }, SecreteToken); // /// ScreteToken line :18
+        console.log(AuthenticationToken + "token")
+
     } else {
         console.log("this Email is Already Exist")
         res.send("this Email is Already Exist == == Try AnOther Email")
@@ -54,20 +63,14 @@ app.post('/signup', async (req, res) => {
 
 
 
+    / /// 2st route
+    / //// / User can Login 
 
-
-
-
-
-/// /// 2st route
-/// //// / User can Login 
 
 app.post('/login', async (req, res) => {
-    const User = new Login(); // Schema line : 12
+  
     // request body login
     const { Email, Password } = req.body
-    User.Email = Email;
-    User.Password = Password;
 
     try {
         /// /// Email checks Exist or Not
@@ -77,11 +80,16 @@ app.post('/login', async (req, res) => {
         if (FindEmail != null) {  // req.body Email
 
             /// /// decrypt Password
-            const decryptedPassword = CryptoJS.AES.decrypt( FindEmail.Password , 'secret key VinayakTavatam').toString(CryptoJS.enc.Utf8);
+            const decryptedPassword = CryptoJS.AES.decrypt(FindEmail.Password, 'secret key VinayakTavatam').toString(CryptoJS.enc.Utf8);
 
-            if ( decryptedPassword === Password) { //
+            if (decryptedPassword === Password) { //
                 console.log("Login success & password is corrected")
-                res.send("Login success & password is corrected").status(200)
+
+                // /// JWt use
+                const AuthenticationToken = jwt.sign({ Email: FindEmail.Email, id: FindEmail._id }, SecreteToken); // /// ScreteToken line :18
+                res.send("Login success & password is corrected  --  " + AuthenticationToken).status(200)
+                console.log(AuthenticationToken)
+
             } else {
                 console.log("PassWord invalid")
                 res.send('PassWord invalid')
@@ -100,6 +108,49 @@ app.post('/login', async (req, res) => {
 })
 
 
+/// /// // get Logined user Details Using  : Post "./getuser"   . Login Required
+
+
+
+
+app.post('/getuser', FetchUser, async (req, res) => {
+    try {
+        const userId = req.userId; console.log(userId)
+        const userdata = await Login.findById(userId)
+        console.log(userdata)
+        res.send(userdata)
+    } catch (error) {
+        console.error(error.message)
+        res.send("Internal server Error").status(500)
+    }
+})
+
+
+/// /// Middleware function
+function FetchUser(req, res, next) {
+    // get User form JWT token and add id to req Object
+
+
+    try {
+        let Token = req.headers.authorization;
+        if (Token) {
+            console.log("token accept")
+            Token = Token.split(" ")[1]
+            const Data = jwt.verify(Token, SecreteToken) // /// ScreteToken line :18
+            console.log(Data)
+            req.userId = Data.id
+            console.log(req.userId)
+
+            next();
+        } else {
+            console.error(error)
+            res.send(" 404").status(404)
+        }
+
+    } catch (error) {
+        res.status(401).send({ error: "Please authenticate using a valid Token" })
+    }
+}
 
 
 
@@ -126,10 +177,8 @@ app.post('/login', async (req, res) => {
 
 
 
+/// route get check for
 
-
-
-// /// route get check for
 app.get('/', (req, res) => {
     console.log("server start server refreshed")
     res.send("creating a server")
